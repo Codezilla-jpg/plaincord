@@ -40,3 +40,17 @@ func TestVoiceBar(t *testing.T) {
 		t.Fatalf("%q", muted)
 	}
 }
+
+func TestWaveAndCallBanner(t *testing.T) {
+	if Wave(0, false) == Wave(0, true) {
+		t.Fatal("speaking wave should differ")
+	}
+	banner := CallBanner("lounge", "mic0", "head0", false, true, 1)
+	if !strings.Contains(banner, "lounge") || !strings.Contains(banner, "mic0") || !strings.Contains(banner, "head0") {
+		t.Fatalf("%q", banner)
+	}
+	line := PeopleLine("Ada", false, false, true, 2)
+	if !strings.Contains(line, "Ada") || !strings.Contains(line, "●") {
+		t.Fatalf("%q", line)
+	}
+}

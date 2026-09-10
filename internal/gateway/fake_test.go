@@ -25,8 +25,12 @@ func TestFakeGatewayFlow(t *testing.T) {
 		t.Fatal("not ready")
 	}
 	guilds := gw.Guilds()
-	if len(guilds) != 2 || guilds[0].Name != "Home" || guilds[1].Name != "Friends" {
+	if len(guilds) != 2 || guilds[0].Name != "Home" || guilds[1].Name != "Arcade" {
 		t.Fatalf("%+v", guilds)
+	}
+	friends := gw.Friends()
+	if len(friends) == 0 {
+		t.Fatal("friends")
 	}
 	channels := gw.Channels("1")
 	var hasGeneral, hasLounge bool
@@ -54,6 +58,9 @@ func TestFakeGatewayFlow(t *testing.T) {
 	}
 	if err := gw.JoinVoice("1", "15", "lounge"); err != nil {
 		t.Fatal(err)
+	}
+	if people := gw.Participants("1", "15"); len(people) == 0 {
+		t.Fatal("participants")
 	}
 	if err := gw.SetMute(true); err != nil {
 		t.Fatal(err)

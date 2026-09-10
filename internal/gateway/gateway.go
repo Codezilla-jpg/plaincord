@@ -14,12 +14,14 @@ type Gateway interface {
 	Start() error
 	Close() error
 	Guilds() []model.Guild
+	Friends() []model.Channel
 	Channels(guildID string) []model.Channel
 	History(channelID string, limit int) ([]model.ChatMessage, error)
 	Send(channelID, content string) (model.ChatMessage, error)
 	JoinVoice(guildID, channelID, name string) error
 	LeaveVoice() error
 	SetMute(muted bool) error
+	Participants(guildID, channelID string) []model.Participant
 	JoinInvite(raw string) error
 	ApplicationID() string
 }

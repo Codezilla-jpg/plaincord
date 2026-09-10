@@ -201,6 +201,6 @@ Usage:
   %s uninstall       remove this install and saved token
   %s --version
 
-Keys: enter open  esc back  r reload  m mute  l leave  a add  ctrl-c quit
+Keys: ↑↓ live server/channel  → chat or call  ← back  r reload  m mute  l leave  a add  ctrl-c quit
 `, name, name, name, name, name, name, name, name, name)
 }

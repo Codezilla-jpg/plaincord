@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Codezilla-jpg/plaincord/internal/model"
+	"github.com/Codezilla-jpg/plaincord/internal/nav"
 )
 
 type Fake struct {
@@ -14,9 +15,12 @@ type Fake struct {
 	mu       sync.Mutex
 	guilds   []model.Guild
 	channels map[string][]model.Channel
+	friends  []model.Channel
 	history  map[string][]model.ChatMessage
+	people   map[string][]model.Participant
 	nextID   int
 	voiceCh  string
+	voiceGID string
 	appID    string
 }
 
@@ -31,7 +35,16 @@ func NewFake(listener Listener) *Fake {
 		nextID:   100,
 		guilds: []model.Guild{
 			{ID: "1", Name: "Home"},
-			{ID: "2", Name: "Friends"},
+			{ID: "2", Name: "Arcade"},
+		},
+		friends: []model.Channel{
+			{ID: "dm-ada", Name: "Ada", Kind: model.KindText, Position: 0},
+			{ID: "call-ada", Name: "Call Ada", Kind: model.KindVoice, Position: 1},
+			{ID: "dm-ben", Name: "Ben", Kind: model.KindText, Position: 2},
+			{ID: "call-ben", Name: "Call Ben", Kind: model.KindVoice, Position: 3},
+			{ID: "gcat", Name: "Groups", Kind: model.KindCategory, Position: 4},
+			{ID: "dm-weekend", Name: "Weekend", Kind: model.KindText, CategoryID: "gcat", Position: 0},
+			{ID: "call-weekend", Name: "Call Weekend", Kind: model.KindVoice, CategoryID: "gcat", Position: 1},
 		},
 		channels: map[string][]model.Channel{
 			"1": {
@@ -44,8 +57,10 @@ func NewFake(listener Listener) *Fake {
 				{ID: "16", Name: "gaming", Kind: model.KindVoice, CategoryID: "14", Position: 1},
 			},
 			"2": {
-				{ID: "20", Name: "chat", Kind: model.KindText, Position: 0},
-				{ID: "21", Name: "call", Kind: model.KindVoice, Position: 1},
+				{ID: "30", Name: "lobby", Kind: model.KindText, Position: 0},
+				{ID: "31", Name: "clips", Kind: model.KindText, Position: 1},
+				{ID: "32", Name: "Voice", Kind: model.KindCategory, Position: 2},
+				{ID: "33", Name: "party", Kind: model.KindVoice, CategoryID: "32", Position: 0},
 			},
 		},
 		history: map[string][]model.ChatMessage{
@@ -55,7 +70,46 @@ func NewFake(listener Listener) *Fake {
 			},
 			"13": {{ID: "3", ChannelID: "13", Author: "Ada", Content: "off-topic lives here", Timestamp: now}},
 			"10": {{ID: "4", ChannelID: "10", Author: "System", Content: "welcome to Home", Timestamp: now}},
-			"20": {{ID: "5", ChannelID: "20", Author: "Cara", Content: "hey", Timestamp: now}},
+			"30": {{ID: "6", ChannelID: "30", Author: "Cara", Content: "arcade lobby is open", Timestamp: now}},
+			"31": {{ID: "7", ChannelID: "31", Author: "Ben", Content: "clip incoming", Timestamp: now}},
+			"dm-ada": {
+				{ID: "8", ChannelID: "dm-ada", Author: "Ada", Content: "got a minute?", Timestamp: now},
+			},
+			"dm-ben": {{ID: "9", ChannelID: "dm-ben", Author: "Ben", Content: "later tonight?", Timestamp: now}},
+			"dm-weekend": {
+				{ID: "10h", ChannelID: "dm-weekend", Author: "Cara", Content: "saturday 19:00", Timestamp: now},
+				{ID: "11h", ChannelID: "dm-weekend", Author: "Ada", Content: "I'm in", Timestamp: now},
+			},
+		},
+		people: map[string][]model.Participant{
+			"15": {
+				{ID: "you", Name: "you", Self: true},
+				{ID: "ada", Name: "Ada", Speaking: true},
+				{ID: "ben", Name: "Ben"},
+			},
+			"16": {
+				{ID: "you", Name: "you", Self: true},
+				{ID: "cara", Name: "Cara", Speaking: true},
+			},
+			"33": {
+				{ID: "you", Name: "you", Self: true},
+				{ID: "ben", Name: "Ben", Speaking: true},
+				{ID: "cara", Name: "Cara"},
+			},
+			"call-ada": {
+				{ID: "you", Name: "you", Self: true},
+				{ID: "ada", Name: "Ada", Speaking: true},
+			},
+			"call-ben": {
+				{ID: "you", Name: "you", Self: true},
+				{ID: "ben", Name: "Ben", Speaking: true},
+			},
+			"call-weekend": {
+				{ID: "you", Name: "you", Self: true},
+				{ID: "ada", Name: "Ada", Speaking: true},
+				{ID: "ben", Name: "Ben"},
+				{ID: "cara", Name: "Cara"},
+			},
 		},
 	}
 }
@@ -77,7 +131,18 @@ func (f *Fake) Guilds() []model.Guild {
 	return out
 }
 
+func (f *Fake) Friends() []model.Channel {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]model.Channel, len(f.friends))
+	copy(out, f.friends)
+	return out
+}
+
 func (f *Fake) Channels(guildID string) []model.Channel {
+	if guildID == nav.FriendsID {
+		return f.Friends()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	src := f.channels[guildID]
@@ -115,9 +180,10 @@ func (f *Fake) Send(channelID, content string) (model.ChatMessage, error) {
 }
 
 func (f *Fake) JoinVoice(guildID, channelID, name string) error {
-	_, _ = guildID, name
+	_ = name
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.voiceGID = guildID
 	f.voiceCh = channelID
 	return nil
 }
@@ -126,6 +192,7 @@ func (f *Fake) LeaveVoice() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.voiceCh = ""
+	f.voiceGID = ""
 	return nil
 }
 
@@ -137,6 +204,19 @@ func (f *Fake) SetMute(muted bool) error {
 	}
 	_ = muted
 	return nil
+}
+
+func (f *Fake) Participants(guildID, channelID string) []model.Participant {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.voiceCh == "" || f.voiceCh != channelID {
+		return nil
+	}
+	_ = guildID
+	src := f.people[channelID]
+	out := make([]model.Participant, len(src))
+	copy(out, src)
+	return out
 }
 
 func (f *Fake) JoinInvite(raw string) error {

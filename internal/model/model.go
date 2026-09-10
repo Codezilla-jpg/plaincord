@@ -37,6 +37,16 @@ type VoiceState struct {
 	GuildID     string
 	ChannelID   string
 	ChannelName string
+	Mic         string
+	Headset     string
+}
+
+type Participant struct {
+	ID       string
+	Name     string
+	Self     bool
+	Muted    bool
+	Speaking bool
 }
 
 type TreeNode struct {

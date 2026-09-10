@@ -31,11 +31,48 @@ func ChannelLabel(kind, name string) string {
 
 func VoiceBar(connected, muted bool, channelName string) string {
 	if !connected {
-		return "Voice  ·  not in a call    j join   l leave   m mute"
+		return "Voice  ·  not in a call    → join   l leave   m mute"
 	}
 	state := "live"
 	if muted {
 		state = "muted"
 	}
 	return "Voice  ·  " + channelName + "  ·  " + state + "    m mute   l leave"
+}
+
+func Wave(frame int, speaking bool) string {
+	bars := []string{"▁▂▃▄▅▆▇", "▂▃▅▇▆▄▂", "▃▅▇█▇▅▃", "▂▄▆▇▅▃▁", "▁▃▅▆▄▂▁"}
+	if !speaking {
+		return "▁▂▁▂▁▂▁"
+	}
+	if frame < 0 {
+		frame = 0
+	}
+	return bars[frame%len(bars)]
+}
+
+func CallBanner(name, mic, headset string, muted, speaking bool, frame int) string {
+	state := "live"
+	if muted {
+		state = "muted"
+	}
+	return "  🔊  " + name + "  ·  " + state + "  ·  mic " + mic + "  ·  headset " + headset + "  ·  " + Wave(frame, speaking && !muted)
+}
+
+func PeopleLine(name string, self, muted, speaking bool, frame int) string {
+	mark := "○"
+	if speaking && !muted {
+		mark = "●"
+	}
+	label := name
+	if self {
+		label += "  (you)"
+	}
+	extra := ""
+	if muted {
+		extra = "  muted"
+	} else if speaking {
+		extra = "  " + Wave(frame, true)
+	}
+	return "  " + mark + "  " + label + extra
 }

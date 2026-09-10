@@ -2,7 +2,7 @@
 
 Clean Discord TUI. Commands: **dis** and **DiscordCli**.
 
-Personal Discord account — servers, channel folders, text chat, voice join/leave/mute.
+Personal Discord account — servers, friends, channel folders, text chat, voice join/leave/mute.
 
 Discord forbids unofficial user clients. Ban risk is yours.
 
@@ -68,16 +68,16 @@ Stores the account token in the OS keyring (macOS Keychain / Secret Service / Wi
 
 | Key | Action |
 |---|---|
-| enter / → | open (server → channels → chat or join voice) |
-| esc / ← | back |
-| arrows | move |
+| ↑ ↓ | live-switch server (or channel once inside) |
+| → / enter | Friends or server → first channel; text → chat; voice → call |
+| ← / esc | back one column |
 | r | reload this level |
 | l | leave call |
 | m | mute / unmute |
 | a | join server (paste invite) |
 | ctrl-c | quit |
 
-Voice join puts your account in the channel. Mute is Discord self-mute. No local mic/speaker routing.
+Friends is pinned at the top of the server rail. Call keeps chat: group or DM stay usable. Call shows a sound bar on top and participants on the right. Mic/headset use PulseAudio (`parec`/`paplay`) or ALSA (`arecord`/`aplay`) when present.
 
 ## License
 
