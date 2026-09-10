@@ -11,6 +11,7 @@ func isolate(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("PLAINCORD_TOKEN", "")
+	t.Setenv("PLAINCORD_NO_KEYRING", "1")
 }
 
 func TestLooksLikeToken(t *testing.T) {

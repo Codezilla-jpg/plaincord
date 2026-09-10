@@ -1,10 +1,16 @@
 package update
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,7 +18,18 @@ import (
 	"time"
 )
 
-const DefaultRepo = "Codezilla-jpg/plaincord"
+const (
+	DefaultRepo = "Codezilla-jpg/plaincord"
+	maxAsset    = 40 << 20
+)
+
+var (
+	ErrNoDigest     = errors.New("release asset has no sha256 digest")
+	ErrBadDigest    = errors.New("sha256 mismatch")
+	ErrBadURL       = errors.New("download host not allowed")
+	ErrTooLarge     = errors.New("asset exceeds size limit")
+	ErrTooManyRedir = errors.New("too many redirects")
+)
 
 type Client struct {
 	HTTP *http.Client
@@ -26,16 +43,29 @@ type Release struct {
 }
 
 type Asset struct {
-	Name string `json:"name"`
-	URL  string `json:"browser_download_url"`
+	Name   string `json:"name"`
+	URL    string `json:"browser_download_url"`
+	Digest string `json:"digest"`
 }
 
 func New() *Client {
-	return &Client{
-		HTTP: &http.Client{Timeout: 60 * time.Second},
+	c := &Client{
 		API:  "https://api.github.com",
 		Repo: DefaultRepo,
 	}
+	c.HTTP = &http.Client{
+		Timeout: 60 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return ErrTooManyRedir
+			}
+			if !c.allowedURL(req.URL) {
+				return fmt.Errorf("%w: %s", ErrBadURL, req.URL.Host)
+			}
+			return nil
+		},
+	}
+	return c
 }
 
 func AssetName(goos, goarch string) string {
@@ -56,9 +86,7 @@ func NeedsUpdate(current, latest string) bool {
 }
 
 func (c *Client) Latest(current string) (Release, Asset, error) {
-	if c.HTTP == nil {
-		c.HTTP = http.DefaultClient
-	}
+	c.ensureHTTP()
 	if c.API == "" {
 		c.API = "https://api.github.com"
 	}
@@ -76,7 +104,7 @@ func (c *Client) Latest(current string) (Release, Asset, error) {
 		return Release{}, Asset{}, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
 		return Release{}, Asset{}, err
 	}
@@ -114,15 +142,27 @@ func (c *Client) Apply(current, dest string) (string, error) {
 			return "", err
 		}
 	}
-	if err := c.replace(asset.URL, dest); err != nil {
+	if err := c.replace(asset, dest); err != nil {
 		return "", err
 	}
 	c.syncSibling(dest)
 	return rel.TagName, nil
 }
 
-func (c *Client) replace(url, dest string) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func (c *Client) replace(asset Asset, dest string) error {
+	c.ensureHTTP()
+	want, err := parseDigest(asset.Digest)
+	if err != nil {
+		return err
+	}
+	u, err := url.Parse(asset.URL)
+	if err != nil {
+		return err
+	}
+	if !c.allowedURL(u) {
+		return fmt.Errorf("%w: %s", ErrBadURL, u.Host)
+	}
+	req, err := http.NewRequest(http.MethodGet, asset.URL, nil)
 	if err != nil {
 		return err
 	}
@@ -135,12 +175,16 @@ func (c *Client) replace(url, dest string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download: %s", resp.Status)
 	}
+	if resp.ContentLength > maxAsset {
+		return ErrTooLarge
+	}
 	tmp := dest + ".new"
 	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
 		return err
 	}
-	_, copyErr := io.Copy(out, resp.Body)
+	h := sha256.New()
+	n, copyErr := io.Copy(out, io.TeeReader(io.LimitReader(resp.Body, maxAsset+1), h))
 	closeErr := out.Close()
 	if copyErr != nil {
 		_ = os.Remove(tmp)
@@ -150,11 +194,93 @@ func (c *Client) replace(url, dest string) error {
 		_ = os.Remove(tmp)
 		return closeErr
 	}
+	if n > maxAsset {
+		_ = os.Remove(tmp)
+		return ErrTooLarge
+	}
+	sum := h.Sum(nil)
+	if subtle.ConstantTimeCompare(sum, want) != 1 {
+		_ = os.Remove(tmp)
+		return ErrBadDigest
+	}
 	if err := os.Rename(tmp, dest); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
 	return nil
+}
+
+func parseDigest(d string) ([]byte, error) {
+	d = strings.TrimSpace(strings.ToLower(d))
+	if !strings.HasPrefix(d, "sha256:") {
+		return nil, ErrNoDigest
+	}
+	raw, err := hex.DecodeString(strings.TrimPrefix(d, "sha256:"))
+	if err != nil || len(raw) != sha256.Size {
+		return nil, ErrNoDigest
+	}
+	return raw, nil
+}
+
+func (c *Client) allowedURL(u *url.URL) bool {
+	if u == nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return false
+	}
+	if apiHost := c.apiHostname(); apiHost != "" && host == apiHost {
+		if isLoopback(host) {
+			return u.Scheme == "http" || u.Scheme == "https"
+		}
+		return u.Scheme == "https"
+	}
+	if u.Scheme != "https" {
+		return false
+	}
+	switch host {
+	case "github.com", "api.github.com",
+		"objects.githubusercontent.com",
+		"release-assets.githubusercontent.com",
+		"github-releases.githubusercontent.com":
+		return true
+	}
+	return strings.HasSuffix(host, ".githubusercontent.com")
+}
+
+func (c *Client) apiHostname() string {
+	u, err := url.Parse(c.API)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
+}
+
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func (c *Client) ensureHTTP() {
+	if c.HTTP != nil {
+		return
+	}
+	c.HTTP = &http.Client{
+		Timeout: 60 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return ErrTooManyRedir
+			}
+			if !c.allowedURL(req.URL) {
+				return fmt.Errorf("%w: %s", ErrBadURL, req.URL.Host)
+			}
+			return nil
+		},
+	}
 }
 
 func (c *Client) syncSibling(dest string) {

@@ -167,6 +167,7 @@ func cmdInvite(raw string, stdout, stderr io.Writer) int {
 }
 
 func cmdUninstall(stdout, stderr io.Writer) int {
+	_ = auth.DeleteToken()
 	cfg, err := auth.ConfigDir()
 	if err != nil {
 		fmt.Fprintln(stderr, err)

@@ -26,6 +26,7 @@ func TestHelpAndVersion(t *testing.T) {
 
 func TestInviteRequiresCode(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("PLAINCORD_NO_KEYRING", "1")
 	var errBuf bytes.Buffer
 	if code := Run([]string{"dis", "invite"}, os.Stdin, os.Stdout, &errBuf); code != 1 {
 		t.Fatalf("code %d", code)
@@ -38,6 +39,7 @@ func TestInviteRequiresCode(t *testing.T) {
 func TestInviteNotLoggedIn(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("PLAINCORD_TOKEN", "")
+	t.Setenv("PLAINCORD_NO_KEYRING", "1")
 	var errBuf bytes.Buffer
 	if code := Run([]string{"dis", "invite", "abc"}, os.Stdin, os.Stdout, &errBuf); code != 1 {
 		t.Fatalf("code %d %s", code, errBuf.String())
@@ -49,6 +51,7 @@ func TestInviteNotLoggedIn(t *testing.T) {
 
 func TestLogout(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("PLAINCORD_NO_KEYRING", "1")
 	var out bytes.Buffer
 	if code := Run([]string{"dis", "logout"}, os.Stdin, &out, &out); code != 0 {
 		t.Fatalf("code %d %s", code, out.String())

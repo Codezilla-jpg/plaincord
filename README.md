@@ -11,7 +11,7 @@ Discord forbids unofficial user clients. Ban risk is yours.
 macOS (Intel + Apple Silicon) and Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Codezilla-jpg/plaincord/main/install.sh | sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Codezilla-jpg/plaincord/main/install.sh | sh
 ```
 
 Installs `dis` and `DiscordCli` to `~/.local/bin`. If `dis` is not found:
@@ -47,7 +47,7 @@ dis login
 dis
 ```
 
-Token: `~/.config/plaincord/token` (0600) or `PLAINCORD_TOKEN`.
+Stores the account token in the OS keyring (macOS Keychain / Secret Service / Windows Credential Manager). File fallback: `~/.config/plaincord/token` (0600). `PLAINCORD_TOKEN` overrides for the process only — do not export it long-term.
 
 ## Commands
 

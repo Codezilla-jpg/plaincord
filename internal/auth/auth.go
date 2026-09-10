@@ -6,9 +6,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/zalando/go-keyring"
 )
 
-const EnvToken = "PLAINCORD_TOKEN"
+const (
+	EnvToken     = "PLAINCORD_TOKEN"
+	EnvNoKeyring = "PLAINCORD_NO_KEYRING"
+	keyService   = "plaincord"
+	keyUser      = "discord-token"
+)
 
 var ErrInvalidToken = errors.New("token looks invalid")
 
@@ -44,9 +51,19 @@ func LooksLikeToken(token string) bool {
 	return len(value) >= 50 && !strings.ContainsAny(value, " \n\t")
 }
 
+func skipKeyring() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(EnvNoKeyring)))
+	return v == "1" || v == "true" || v == "yes"
+}
+
 func LoadToken() (string, error) {
 	if env := strings.TrimSpace(os.Getenv(EnvToken)); env != "" {
 		return env, nil
+	}
+	if !skipKeyring() {
+		if secret, err := keyring.Get(keyService, keyUser); err == nil && strings.TrimSpace(secret) != "" {
+			return strings.TrimSpace(secret), nil
+		}
 	}
 	path, err := TokenPath()
 	if err != nil {
@@ -67,6 +84,14 @@ func SaveToken(token string) error {
 	if !LooksLikeToken(value) {
 		return ErrInvalidToken
 	}
+	if !skipKeyring() {
+		if err := keyring.Set(keyService, keyUser, value); err == nil {
+			if path, err := TokenPath(); err == nil {
+				_ = os.Remove(path)
+			}
+			return nil
+		}
+	}
 	path, err := TokenPath()
 	if err != nil {
 		return err
@@ -78,6 +103,9 @@ func SaveToken(token string) error {
 }
 
 func DeleteToken() error {
+	if !skipKeyring() {
+		_ = keyring.Delete(keyService, keyUser)
+	}
 	path, err := TokenPath()
 	if err != nil {
 		return err
