@@ -20,7 +20,6 @@ type Discord struct {
 	Listener  Listener
 	appID     string
 	session   *discordgo.Session
-	voice     *discordgo.VoiceConnection
 	localCall bool
 	localGID  string
 	localCh   string
@@ -76,13 +75,16 @@ func (d *Discord) Start() error {
 
 func (d *Discord) Close() error {
 	d.mu.Lock()
-	vc := d.voice
 	s := d.session
-	d.voice = nil
+	gid, ch := d.localGID, d.localCh
 	d.session = nil
+	d.localCall = false
+	d.localGID = ""
+	d.localCh = ""
+	d.localName = ""
 	d.mu.Unlock()
-	if vc != nil {
-		_ = vc.Disconnect()
+	if s != nil && gid != "" && !skipVoicePresence(gid, ch) {
+		_ = s.ChannelVoiceJoinManual(gid, "", false, false)
 	}
 	if s != nil {
 		return s.Close()
@@ -200,88 +202,131 @@ func (d *Discord) Send(channelID, content string) (model.ChatMessage, error) {
 	return toChat(msg), nil
 }
 
-func (d *Discord) JoinVoice(guildID, channelID, name string) error {
-	if guildID == nav.FriendsID || strings.HasPrefix(channelID, "call:") {
-		d.mu.Lock()
-		if d.voice != nil {
-			_ = d.voice.Disconnect()
-			d.voice = nil
-		}
-		d.localCall = true
-		d.localGID = guildID
-		d.localCh = channelID
-		d.localName = name
-		d.mu.Unlock()
-		return nil
+func skipVoicePresence(guildID, channelID string) bool {
+	return guildID == nav.FriendsID || strings.HasPrefix(channelID, "call:")
+}
+
+func friendPeople(channelID, callName string) []model.Participant {
+	out := []model.Participant{{ID: "you", Name: "you", Self: true}}
+	name := strings.TrimPrefix(callName, "Call ")
+	if name != "" && name != "you" {
+		out = append(out, model.Participant{ID: channelID, Name: name, Speaking: true})
 	}
+	return out
+}
+
+func memberName(vs *discordgo.VoiceState) string {
+	if vs == nil {
+		return ""
+	}
+	if vs.Member != nil {
+		if vs.Member.Nick != "" {
+			return vs.Member.Nick
+		}
+		if vs.Member.User != nil && vs.Member.User.Username != "" {
+			return vs.Member.User.Username
+		}
+	}
+	return vs.UserID
+}
+
+func guildPeople(channelID, meID string, states []*discordgo.VoiceState) []model.Participant {
+	out := []model.Participant{{ID: "you", Name: "you", Self: true}}
+	for _, vs := range states {
+		if vs == nil || vs.ChannelID != channelID {
+			continue
+		}
+		if meID != "" && vs.UserID == meID {
+			continue
+		}
+		out = append(out, model.Participant{
+			ID:       vs.UserID,
+			Name:     memberName(vs),
+			Muted:    vs.SelfMute || vs.Mute,
+			Speaking: true,
+		})
+	}
+	return out
+}
+
+func (d *Discord) JoinVoice(guildID, channelID, name string) error {
 	s := d.sess()
 	if s == nil {
 		return fmt.Errorf("not connected")
 	}
 	d.mu.Lock()
-	existing := d.voice
-	d.localCall = false
+	prevGID, prevCh := d.localGID, d.localCh
+	d.localCall = true
+	d.localGID = guildID
+	d.localCh = channelID
+	d.localName = name
 	d.mu.Unlock()
-	if existing != nil && existing.GuildID == guildID {
-		return existing.ChangeChannel(channelID, false, false)
+	if !skipVoicePresence(prevGID, prevCh) && prevGID != "" && prevGID != guildID {
+		_ = s.ChannelVoiceJoinManual(prevGID, "", false, false)
 	}
-	if existing != nil {
-		_ = existing.Disconnect()
+	if skipVoicePresence(guildID, channelID) {
+		return nil
 	}
-	vc, err := s.ChannelVoiceJoin(guildID, channelID, false, false)
-	if err != nil {
-		return err
-	}
-	d.mu.Lock()
-	d.voice = vc
-	d.mu.Unlock()
+	_ = s.ChannelVoiceJoinManual(guildID, channelID, false, false)
 	return nil
 }
 
 func (d *Discord) LeaveVoice() error {
 	d.mu.Lock()
-	vc := d.voice
-	d.voice = nil
+	s := d.session
+	gid, ch := d.localGID, d.localCh
 	d.localCall = false
 	d.localGID = ""
 	d.localCh = ""
 	d.localName = ""
 	d.mu.Unlock()
-	if vc == nil {
+	if s == nil || gid == "" || skipVoicePresence(gid, ch) {
 		return nil
 	}
-	return vc.Disconnect()
+	return s.ChannelVoiceJoinManual(gid, "", false, false)
 }
 
 func (d *Discord) SetMute(muted bool) error {
 	d.mu.Lock()
-	vc := d.voice
-	local := d.localCall
-	d.mu.Unlock()
-	if local {
-		return nil
-	}
-	if vc == nil {
+	if !d.localCall {
+		d.mu.Unlock()
 		return fmt.Errorf("not in a call")
 	}
-	return vc.ChangeChannel(vc.ChannelID, muted, false)
+	gid, ch := d.localGID, d.localCh
+	d.mu.Unlock()
+	if skipVoicePresence(gid, ch) {
+		return nil
+	}
+	s := d.sess()
+	if s == nil {
+		return nil
+	}
+	return s.ChannelVoiceJoinManual(gid, ch, muted, false)
 }
 
 func (d *Discord) Participants(guildID, channelID string) []model.Participant {
-	if guildID == nav.FriendsID || strings.HasPrefix(channelID, "call:") {
-		d.mu.Lock()
-		active := d.localCall && d.localCh == channelID
-		name := strings.TrimPrefix(d.localName, "Call ")
-		d.mu.Unlock()
-		if !active {
-			return nil
-		}
-		out := []model.Participant{{ID: "you", Name: "you", Self: true}}
-		if name != "" && name != "you" {
-			out = append(out, model.Participant{ID: channelID, Name: name, Speaking: true})
-		}
-		return out
+	d.mu.Lock()
+	active := d.localCall && d.localGID == guildID && d.localCh == channelID
+	name := d.localName
+	d.mu.Unlock()
+	if !active {
+		return nil
 	}
+	if skipVoicePresence(guildID, channelID) {
+		return friendPeople(channelID, name)
+	}
+	return guildPeople(channelID, d.meID(), d.voiceStates(guildID))
+}
+
+func (d *Discord) meID() string {
+	s := d.sess()
+	if s == nil || s.State == nil || s.State.User == nil {
+		return ""
+	}
+	return s.State.User.ID
+}
+
+func (d *Discord) voiceStates(guildID string) []*discordgo.VoiceState {
 	s := d.sess()
 	if s == nil || s.State == nil {
 		return nil
@@ -290,32 +335,7 @@ func (d *Discord) Participants(guildID, channelID string) []model.Participant {
 	if err != nil || guild == nil {
 		return nil
 	}
-	me := ""
-	if s.State.User != nil {
-		me = s.State.User.ID
-	}
-	var out []model.Participant
-	for _, vs := range guild.VoiceStates {
-		if vs.ChannelID != channelID {
-			continue
-		}
-		name := vs.UserID
-		if vs.Member != nil {
-			if vs.Member.Nick != "" {
-				name = vs.Member.Nick
-			} else if vs.Member.User != nil && vs.Member.User.Username != "" {
-				name = vs.Member.User.Username
-			}
-		}
-		out = append(out, model.Participant{
-			ID:       vs.UserID,
-			Name:     name,
-			Self:     vs.UserID == me,
-			Muted:    vs.SelfMute || vs.Mute,
-			Speaking: vs.UserID != me,
-		})
-	}
-	return out
+	return guild.VoiceStates
 }
 
 func (d *Discord) JoinInvite(raw string) error {
@@ -337,7 +357,7 @@ func kindOf(t discordgo.ChannelType) (model.Kind, bool) {
 		return model.KindCategory, true
 	case discordgo.ChannelTypeGuildText:
 		return model.KindText, true
-	case discordgo.ChannelTypeGuildVoice:
+	case discordgo.ChannelTypeGuildVoice, discordgo.ChannelTypeGuildStageVoice:
 		return model.KindVoice, true
 	default:
 		return "", false

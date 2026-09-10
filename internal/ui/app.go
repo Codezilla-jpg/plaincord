@@ -605,6 +605,10 @@ func (a *App) join(ch model.Channel) {
 		return
 	}
 	if err := a.gw.JoinVoice(a.current.ID, ch.ID, ch.Name); err != nil {
+		a.engine.InCall = false
+		a.engine.CallGuildID = ""
+		a.engine.CallChannelID = ""
+		a.engine.CallName = ""
 		a.flash(err.Error())
 		return
 	}
