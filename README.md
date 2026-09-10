@@ -1,43 +1,56 @@
 # plaincord
 
-A clean Discord terminal client. Servers, channel folders, text chat, and voice — nothing else.
+Clean Discord TUI. Binary names: **dc** and **DiscordCli**.
 
-Official **bot token** login only. No user accounts, no self-bots.
+Servers, channel folders, text chat, voice join/leave/mute. Bot token only.
 
 ## Install
 
 ```bash
-uv tool install git+https://github.com/Codezilla-jpg/plaincord
-# or from a clone
-uv sync
-uv run plaincord --demo
+curl -fsSL https://raw.githubusercontent.com/Codezilla-jpg/plaincord/main/install.sh | sh
 ```
 
-Requires Python 3.11+.
+Puts `dc` and `DiscordCli` in `~/.local/bin`.
+
+```bash
+dc update          # replace this install with the latest GitHub release
+```
+
+From source:
+
+```bash
+git clone https://github.com/Codezilla-jpg/plaincord.git
+cd plaincord
+go build -o dc ./cmd/dc
+cp dc DiscordCli
+```
 
 ## Login
 
-1. Create an application at [Discord Developer Portal](https://discord.com/developers/applications).
-2. Bot → Add Bot.
-3. Privileged Gateway Intents → enable **Message Content Intent**.
-4. Reset Token → copy it.
+1. [Discord Developer Portal](https://discord.com/developers/applications) → New App → Bot
+2. Enable **Message Content Intent**
+3. Copy the bot token
 
 ```bash
-plaincord login
-plaincord
+dc login
+dc
+# or
+DiscordCli --demo
 ```
 
-Token goes to the OS keyring, or `~/.config/plaincord/token` (mode 0600). Override with `PLAINCORD_TOKEN`.
+Token: `~/.config/plaincord/token` (0600) or `PLAINCORD_TOKEN`.
 
-## Add a server
+## Commands
 
-```bash
-plaincord invite
-```
-
-Open the URL, pick a server. In the TUI press `a`, then `r` to reload.
-
-Needed bot permissions: View Channel, Send Messages, Read Message History, Connect, Speak.
+| | |
+|---|---|
+| `dc` | start TUI |
+| `dc --demo` | sample data |
+| `dc login` | store token |
+| `dc logout` | remove token |
+| `dc invite` | bot invite URL |
+| `dc update` | update this binary |
+| `dc --version` | version |
 
 ## Keys
 
@@ -45,25 +58,15 @@ Needed bot permissions: View Channel, Send Messages, Read Message History, Conne
 |---|---|
 | arrows / tab | move |
 | enter | open text channel or join voice |
-| r | reload chat (or server list) |
+| r | reload chat / servers |
 | j | join highlighted voice channel |
 | l | leave call |
 | m | mute / unmute |
 | a | add server (invite URL) |
-| esc | back to channel list |
-| ctrl+q | quit |
-
-Type in the composer and press enter to send.
+| esc | back to channels |
+| ctrl-c | quit |
 
 Voice join puts the bot in the channel. Mute is Discord self-mute. No local mic/speaker routing.
-
-## Not in scope
-
-Server settings, roles, moderation, DMs, threads, forums, friend lists.
-
-## Why a bot?
-
-Discord forbids automated user accounts. plaincord is a bot client: it appears as your bot user in servers you invite it to.
 
 ## License
 

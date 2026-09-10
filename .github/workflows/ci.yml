@@ -2,16 +2,45 @@ name: ci
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+permissions:
+  contents: write
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-go@v5
         with:
-          python-version: "3.12"
-      - run: uv sync --group dev
-      - run: uv run ruff check src tests
-      - run: uv run pytest -q
+          go-version: "1.25"
+      - run: go test ./...
+      - run: go build -o dc ./cmd/dc
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Build binaries
+        run: |
+          ver="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          build() {
+            os="$1"; arch="$2"
+            out="dist/dc_${os}_${arch}"
+            if [ "$os" = windows ]; then out="${out}.exe"; fi
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -ldflags "-X main.version=${ver}" -o "$out" ./cmd/dc
+          }
+          build linux amd64
+          build linux arm64
+          build darwin amd64
+          build darwin arm64
+          build windows amd64
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* install.sh --generate-notes --title "${GITHUB_REF_NAME}"
