@@ -9,7 +9,7 @@ import (
 
 func TestHelpAndVersion(t *testing.T) {
 	var out bytes.Buffer
-	if code := Run([]string{"dc", "--help"}, os.Stdin, &out, &out); code != 0 {
+	if code := Run([]string{"dis", "--help"}, os.Stdin, &out, &out); code != 0 {
 		t.Fatalf("help %d", code)
 	}
 	if !strings.Contains(out.String(), "account token") {
@@ -27,7 +27,7 @@ func TestHelpAndVersion(t *testing.T) {
 func TestInviteRequiresCode(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var errBuf bytes.Buffer
-	if code := Run([]string{"dc", "invite"}, os.Stdin, os.Stdout, &errBuf); code != 1 {
+	if code := Run([]string{"dis", "invite"}, os.Stdin, os.Stdout, &errBuf); code != 1 {
 		t.Fatalf("code %d", code)
 	}
 	if !strings.Contains(errBuf.String(), "usage:") {
@@ -39,7 +39,7 @@ func TestInviteNotLoggedIn(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("PLAINCORD_TOKEN", "")
 	var errBuf bytes.Buffer
-	if code := Run([]string{"dc", "invite", "abc"}, os.Stdin, os.Stdout, &errBuf); code != 1 {
+	if code := Run([]string{"dis", "invite", "abc"}, os.Stdin, os.Stdout, &errBuf); code != 1 {
 		t.Fatalf("code %d %s", code, errBuf.String())
 	}
 	if !strings.Contains(errBuf.String(), "Not logged in") {
@@ -50,7 +50,7 @@ func TestInviteNotLoggedIn(t *testing.T) {
 func TestLogout(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var out bytes.Buffer
-	if code := Run([]string{"dc", "logout"}, os.Stdin, &out, &out); code != 0 {
+	if code := Run([]string{"dis", "logout"}, os.Stdin, &out, &out); code != 0 {
 		t.Fatalf("code %d %s", code, out.String())
 	}
 	if !strings.Contains(strings.ToLower(out.String()), "removed") {
@@ -60,7 +60,7 @@ func TestLogout(t *testing.T) {
 
 func TestUnknownCommand(t *testing.T) {
 	var errBuf bytes.Buffer
-	if code := Run([]string{"dc", "nope"}, os.Stdin, os.Stdout, &errBuf); code != 2 {
+	if code := Run([]string{"dis", "nope"}, os.Stdin, os.Stdout, &errBuf); code != 2 {
 		t.Fatalf("code %d", code)
 	}
 }

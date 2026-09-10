@@ -20,7 +20,7 @@ import (
 var Version = "0.2.0"
 
 func Run(args []string, stdin *os.File, stdout, stderr io.Writer) int {
-	name := "dc"
+	name := "dis"
 	if len(args) > 0 {
 		name = filepath.Base(args[0])
 	}
@@ -66,7 +66,7 @@ func Run(args []string, stdin *os.File, stdout, stderr io.Writer) int {
 		return 0
 	case "invite":
 		if len(filtered) < 2 {
-			fmt.Fprintln(stderr, "usage: dc invite <discord.gg/code>")
+			fmt.Fprintln(stderr, "usage: dis invite <discord.gg/code>")
 			return 1
 		}
 		return cmdInvite(filtered[1], stdout, stderr)
@@ -114,7 +114,7 @@ func cmdLogin(stdin *os.File, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	fmt.Fprintln(stdout, "Saved. Start with: dc")
+	fmt.Fprintln(stdout, "Saved. Start with: dis")
 	return 0
 }
 
@@ -139,7 +139,7 @@ func cmdInvite(raw string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if token == "" {
-		fmt.Fprintln(stderr, "Not logged in. Run: dc login")
+		fmt.Fprintln(stderr, "Not logged in. Run: dis login")
 		return 1
 	}
 	wait := &readyN{done: make(chan struct{})}

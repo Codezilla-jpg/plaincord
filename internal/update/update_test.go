@@ -10,10 +10,10 @@ import (
 )
 
 func TestAssetName(t *testing.T) {
-	if AssetName("linux", "amd64") != "dc_linux_amd64" {
+	if AssetName("linux", "amd64") != "dis_linux_amd64" {
 		t.Fatal(AssetName("linux", "amd64"))
 	}
-	if AssetName("windows", "amd64") != "dc_windows_amd64.exe" {
+	if AssetName("windows", "amd64") != "dis_windows_amd64.exe" {
 		t.Fatal(AssetName("windows", "amd64"))
 	}
 }
@@ -32,7 +32,7 @@ func TestNeedsUpdate(t *testing.T) {
 
 func TestApplyReplacesBinary(t *testing.T) {
 	dir := t.TempDir()
-	dest := filepath.Join(dir, "dc")
+	dest := filepath.Join(dir, "dis")
 	if err := os.WriteFile(dest, []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestApplyNoUpdate(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := &Client{HTTP: srv.Client(), API: srv.URL, Repo: DefaultRepo}
-	tag, err := c.Apply("0.2.0", filepath.Join(t.TempDir(), "dc"))
+	tag, err := c.Apply("0.2.0", filepath.Join(t.TempDir(), "dis"))
 	if err != nil {
 		t.Fatal(err)
 	}

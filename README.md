@@ -1,6 +1,6 @@
 # plaincord
 
-Clean Discord TUI. Binary names: **dc** and **DiscordCli**.
+Clean Discord TUI. Binary names: **dis** and **DiscordCli**.
 
 Your **personal Discord account** — servers, channel folders, text chat, voice join/leave/mute.
 
@@ -12,17 +12,17 @@ Discord forbids unofficial user clients. Ban risk is yours.
 curl -fsSL https://raw.githubusercontent.com/Codezilla-jpg/plaincord/main/install.sh | sh
 ```
 
-Puts `dc` and `DiscordCli` in `~/.local/bin`.
+Puts `dis` and `DiscordCli` in `~/.local/bin`.
 
 ```bash
-dc update
+dis update
 ```
 
 ## Login
 
 ```bash
-dc login
-dc
+dis login
+dis
 ```
 
 Stores the account token in `~/.config/plaincord/token` (0600), or use `PLAINCORD_TOKEN`.
@@ -31,13 +31,13 @@ Stores the account token in `~/.config/plaincord/token` (0600), or use `PLAINCOR
 
 | | |
 |---|---|
-| `dc` | start TUI |
-| `dc --demo` | sample data |
-| `dc login` | store account token |
-| `dc logout` | remove token |
-| `dc invite discord.gg/…` | join a server |
-| `dc update` | update this binary |
-| `dc --version` | version |
+| `dis` | start TUI |
+| `dis --demo` | sample data |
+| `dis login` | store account token |
+| `dis logout` | remove token |
+| `dis invite discord.gg/…` | join a server |
+| `dis update` | update this binary |
+| `dis --version` | version |
 
 ## Keys
 

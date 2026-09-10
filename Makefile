@@ -5,8 +5,8 @@ LDFLAGS := -X main.version=$(VERSION)
 .PHONY: build test
 
 build:
-	$(GO) build -ldflags "$(LDFLAGS)" -o dc ./cmd/dc
-	cp -f dc DiscordCli
+	$(GO) build -ldflags "$(LDFLAGS)" -o dis ./cmd/dis
+	cp -f dis DiscordCli
 
 test:
 	$(GO) test ./...

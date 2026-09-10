@@ -15,7 +15,7 @@ jobs:
         with:
           go-version: "1.25"
       - run: go test ./...
-      - run: go build -o dc ./cmd/dc
+      - run: go build -o dis ./cmd/dis
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: test
@@ -31,9 +31,9 @@ jobs:
           mkdir -p dist
           build() {
             os="$1"; arch="$2"
-            out="dist/dc_${os}_${arch}"
+            out="dist/dis_${os}_${arch}"
             if [ "$os" = windows ]; then out="${out}.exe"; fi
-            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -ldflags "-X main.version=${ver}" -o "$out" ./cmd/dc
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -ldflags "-X main.version=${ver}" -o "$out" ./cmd/dis
           }
           build linux amd64
           build linux arm64

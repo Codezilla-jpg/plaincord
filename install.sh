@@ -36,25 +36,26 @@ case "$os" in
     ;;
 esac
 
-asset="dc_${os}_${arch}"
+asset="dis_${os}_${arch}"
 url="https://github.com/${REPO}/releases/latest/download/${asset}"
 
 mkdir -p "$TMP" "$BIN_DIR"
 trap 'rm -rf "$TMP"' EXIT
 
 echo "Downloading ${url}"
-if ! curl -fL --retry 3 -o "$TMP/dc" "$url"; then
+if ! curl -fL --retry 3 -o "$TMP/dis" "$url"; then
   echo "Release binary not found. Build from source:" >&2
-  echo "  git clone https://github.com/${REPO}.git && cd plaincord && go build -o dc ./cmd/dc" >&2
+  echo "  git clone https://github.com/${REPO}.git && cd plaincord && go build -o dis ./cmd/dis" >&2
   exit 1
 fi
-chmod 755 "$TMP/dc"
-mv "$TMP/dc" "$BIN_DIR/dc"
-cp -f "$BIN_DIR/dc" "$BIN_DIR/DiscordCli"
+chmod 755 "$TMP/dis"
+mv "$TMP/dis" "$BIN_DIR/dis"
+cp -f "$BIN_DIR/dis" "$BIN_DIR/DiscordCli"
 chmod 755 "$BIN_DIR/DiscordCli"
+rm -f "$BIN_DIR/dc"
 
 echo "Installed:"
-echo "  $BIN_DIR/dc"
+echo "  $BIN_DIR/dis"
 echo "  $BIN_DIR/DiscordCli"
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
@@ -62,4 +63,4 @@ case ":$PATH:" in
     echo "Add to PATH: export PATH=\"$BIN_DIR:\$PATH\""
     ;;
 esac
-echo "Update later with: dc update"
+echo "Update later with: dis update"

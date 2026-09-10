@@ -39,7 +39,7 @@ func New() *Client {
 }
 
 func AssetName(goos, goarch string) string {
-	name := fmt.Sprintf("dc_%s_%s", goos, goarch)
+	name := fmt.Sprintf("dis_%s_%s", goos, goarch)
 	if goos == "windows" {
 		name += ".exe"
 	}
@@ -162,10 +162,10 @@ func (c *Client) syncSibling(dest string) {
 	dir := filepath.Dir(dest)
 	var other string
 	switch base {
-	case "dc", "dc.exe":
+	case "dis", "dis.exe":
 		other = "DiscordCli"
 	case "DiscordCli", "DiscordCli.exe":
-		other = "dc"
+		other = "dis"
 	default:
 		return
 	}

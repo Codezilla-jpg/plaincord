@@ -5,6 +5,7 @@ __pycache__/
 /dist/
 /build/
 /bin/
+/dis
 /dc
 /DiscordCli
 *.exe
