@@ -14,13 +14,39 @@ import (
 	"github.com/Codezilla-jpg/plaincord/internal/voice"
 )
 
+type navLevel int
+
+const (
+	navServers navLevel = iota
+	navChannels
+	navChat
+)
+
+type channelRow struct {
+	label string
+	cat   bool
+	ch    *model.Channel
+}
+
+var (
+	colBg     = tcell.NewRGBColor(7, 8, 16)
+	colPanel  = tcell.NewRGBColor(14, 16, 32)
+	colAccent = tcell.NewRGBColor(108, 92, 231)
+	colHot    = tcell.NewRGBColor(255, 215, 64)
+	colVoice  = tcell.NewRGBColor(0, 229, 168)
+	colText   = tcell.NewRGBColor(248, 249, 255)
+	colMuted  = tcell.NewRGBColor(140, 146, 180)
+	colSelect = tcell.NewRGBColor(108, 92, 231)
+)
+
 type App struct {
 	demo     bool
 	token    string
 	tv       *tview.Application
 	pages    *tview.Pages
-	guilds   *tview.List
-	channels *tview.TreeView
+	stage    *tview.Pages
+	nav      *tview.List
+	crumb    *tview.TextView
 	chat     *tview.TextView
 	title    *tview.TextView
 	composer *tview.InputField
@@ -29,10 +55,12 @@ type App struct {
 
 	gw      gateway.Gateway
 	voice   voice.Controller
+	level   navLevel
+	guilds  []model.Guild
 	current *model.Guild
 	channel *model.Channel
+	rows    []channelRow
 	seen    map[string]struct{}
-	cursor  *model.TreeNode
 }
 
 func Run(demo bool, token string) error {
@@ -46,8 +74,7 @@ func Run(demo bool, token string) error {
 
 func (a *App) OnReady() {
 	a.tv.QueueUpdateDraw(func() {
-		a.refreshGuilds()
-		a.title.SetText("select a channel")
+		a.fillServers()
 		a.flash("connected")
 	})
 }
@@ -61,11 +88,25 @@ func (a *App) OnMessage(msg model.ChatMessage) {
 func (a *App) OnError(text string) {
 	a.tv.QueueUpdateDraw(func() {
 		a.flash(text)
-		a.title.SetText(text)
 	})
 }
 
+func applyTheme() {
+	tview.Styles.PrimitiveBackgroundColor = colBg
+	tview.Styles.ContrastBackgroundColor = colAccent
+	tview.Styles.MoreContrastBackgroundColor = colHot
+	tview.Styles.BorderColor = colAccent
+	tview.Styles.TitleColor = colHot
+	tview.Styles.GraphicsColor = colAccent
+	tview.Styles.PrimaryTextColor = colText
+	tview.Styles.SecondaryTextColor = colMuted
+	tview.Styles.TertiaryTextColor = colHot
+	tview.Styles.InverseTextColor = colBg
+	tview.Styles.ContrastSecondaryTextColor = colText
+}
+
 func (a *App) run() error {
+	applyTheme()
 	a.tv = tview.NewApplication()
 	a.pages = tview.NewPages()
 	a.buildMain()
@@ -91,7 +132,7 @@ func (a *App) run() error {
 	if a.gw != nil {
 		go a.startGateway()
 	}
-	a.tv.SetRoot(a.pages, true).SetFocus(a.guilds)
+	a.tv.SetRoot(a.pages, true).SetFocus(a.nav)
 	a.tv.SetInputCapture(a.keys)
 	return a.tv.Run()
 }
@@ -103,36 +144,43 @@ func (a *App) startGateway() {
 }
 
 func (a *App) buildMain() {
-	a.guilds = tview.NewList().ShowSecondaryText(false)
-	a.guilds.SetBorder(true).SetTitle(" servers ")
-	a.guilds.SetSelectedFunc(func(index int, _ string, _ string, _ rune) {
-		a.openGuildIndex(index)
+	a.crumb = tview.NewTextView().SetDynamicColors(true)
+	a.crumb.SetBackgroundColor(colAccent)
+	a.crumb.SetTextColor(colText)
+	a.setCrumb()
+
+	a.nav = tview.NewList().
+		ShowSecondaryText(false).
+		SetHighlightFullLine(true).
+		SetWrapAround(true)
+	a.nav.SetBorder(true).SetTitle(" explore ")
+	a.nav.SetBackgroundColor(colPanel)
+	a.nav.SetBorderColor(colAccent)
+	a.nav.SetTitleColor(colHot)
+	a.nav.SetMainTextColor(colText)
+	a.nav.SetSelectedBackgroundColor(colSelect)
+	a.nav.SetSelectedTextColor(colText)
+	a.nav.SetSelectedFunc(func(index int, _ string, _ string, _ rune) {
+		a.activate(index)
 	})
 
-	a.channels = tview.NewTreeView()
-	a.channels.SetBorder(true).SetTitle(" channels ")
-	a.channels.SetSelectedFunc(func(node *tview.TreeNode) {
-		ref, _ := node.GetReference().(*model.TreeNode)
-		if ref == nil || ref.Channel == nil {
-			return
-		}
-		switch ref.Kind {
-		case model.KindText:
-			a.openText(*ref.Channel)
-		case model.KindVoice:
-			a.join(*ref.Channel)
-		}
-	})
-	a.channels.SetChangedFunc(func(node *tview.TreeNode) {
-		ref, _ := node.GetReference().(*model.TreeNode)
-		a.cursor = ref
-	})
+	a.title = tview.NewTextView().SetDynamicColors(true)
+	a.title.SetBorder(true).SetTitle(" chat ")
+	a.title.SetBackgroundColor(colPanel)
+	a.title.SetBorderColor(colHot)
+	a.title.SetTitleColor(colHot)
+	a.title.SetTextColor(colText)
 
-	a.title = tview.NewTextView().SetText("connecting…")
-	a.title.SetBorder(true)
 	a.chat = tview.NewTextView().SetDynamicColors(true).SetScrollable(true)
 	a.chat.SetBorder(true)
-	a.composer = tview.NewInputField().SetLabel("> ").SetFieldBackgroundColor(tcell.ColorBlack)
+	a.chat.SetBackgroundColor(colBg)
+	a.chat.SetBorderColor(colAccent)
+	a.chat.SetTextColor(colText)
+
+	a.composer = tview.NewInputField().SetLabel("  ▸  ").SetFieldWidth(0)
+	a.composer.SetLabelColor(colHot)
+	a.composer.SetFieldBackgroundColor(colPanel)
+	a.composer.SetFieldTextColor(colText)
 	a.composer.SetDoneFunc(func(key tcell.Key) {
 		if key != tcell.KeyEnter {
 			return
@@ -140,28 +188,45 @@ func (a *App) buildMain() {
 		a.send(a.composer.GetText())
 		a.composer.SetText("")
 	})
-	a.voiceBar = tview.NewTextView().SetText(formatters.VoiceBar(false, false, ""))
-	a.status = tview.NewTextView().SetText("r reload  j join  l leave  m mute  a add  tab focus  ctrl-c quit")
-}
 
-func (a *App) mainLayout() tview.Primitive {
+	a.voiceBar = tview.NewTextView().SetDynamicColors(true)
+	a.voiceBar.SetBackgroundColor(colPanel)
+	a.voiceBar.SetTextColor(colVoice)
+	a.paintVoice()
+
+	a.status = tview.NewTextView().SetDynamicColors(true)
+	a.status.SetBackgroundColor(colAccent)
+	a.status.SetTextColor(colText)
+	a.flash("enter open   esc back")
+
 	chat := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(a.title, 3, 0, false).
 		AddItem(a.chat, 0, 1, false).
 		AddItem(a.composer, 1, 0, true)
-	body := tview.NewFlex().
-		AddItem(a.guilds, 22, 0, true).
-		AddItem(a.channels, 28, 0, false).
-		AddItem(chat, 0, 1, false)
+
+	a.stage = tview.NewPages()
+	a.stage.AddPage("browse", a.nav, true, true)
+	a.stage.AddPage("chat", chat, true, false)
+}
+
+func (a *App) mainLayout() tview.Primitive {
 	return tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(body, 0, 1, true).
+		AddItem(a.crumb, 1, 0, false).
+		AddItem(a.stage, 0, 1, true).
 		AddItem(a.voiceBar, 1, 0, false).
 		AddItem(a.status, 1, 0, false)
 }
 
 func (a *App) loginForm() tview.Primitive {
 	form := tview.NewForm()
-	form.SetBorder(true).SetTitle(" DiscordCli  login ")
+	form.SetBorder(true).SetTitle(" DIS  login ")
+	form.SetBackgroundColor(colPanel)
+	form.SetBorderColor(colHot)
+	form.SetTitleColor(colHot)
+	form.SetFieldBackgroundColor(colBg)
+	form.SetFieldTextColor(colText)
+	form.SetButtonBackgroundColor(colAccent)
+	form.SetButtonTextColor(colText)
 	form.AddPasswordField("Account token", "", 60, '*', nil)
 	form.AddButton("Save", func() {
 		item := form.GetFormItem(0).(*tview.InputField)
@@ -173,15 +238,17 @@ func (a *App) loginForm() tview.Primitive {
 		a.token = tok
 		a.gw = gateway.NewDiscord(a.token, a)
 		a.pages.SwitchToPage("main")
-		a.tv.SetFocus(a.guilds)
+		a.tv.SetFocus(a.nav)
 		go a.startGateway()
 	})
 	form.AddButton("Quit", func() { a.tv.Stop() })
-	hint := tview.NewTextView().SetText("Paste your Discord account token. Unofficial clients can get accounts banned.")
+	hint := tview.NewTextView().SetDynamicColors(true).
+		SetText("[#FFD93D]Paste your Discord account token.[-] Unofficial clients can get accounts banned.")
+	hint.SetBackgroundColor(colBg)
 	return tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
 		AddItem(hint, 2, 0, false).
-		AddItem(form, 10, 0, true).
+		AddItem(form, 12, 0, true).
 		AddItem(nil, 0, 1, false)
 }
 
@@ -196,12 +263,30 @@ func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
 		}
 		a.tv.Stop()
 		return nil
+	case tcell.KeyEsc, tcell.KeyBackspace, tcell.KeyBackspace2, tcell.KeyLeft:
+		if a.tv.GetFocus() == a.composer && ev.Key() == tcell.KeyEsc {
+			a.back()
+			return nil
+		}
+		if a.tv.GetFocus() == a.composer {
+			return ev
+		}
+		a.back()
+		return nil
+	case tcell.KeyRight:
+		if a.tv.GetFocus() == a.nav {
+			a.activate(a.nav.GetCurrentItem())
+			return nil
+		}
 	case tcell.KeyTab:
-		a.cycleFocus()
-		return nil
-	case tcell.KeyEsc:
-		a.tv.SetFocus(a.channels)
-		return nil
+		if a.level == navChat {
+			if a.tv.GetFocus() == a.composer {
+				a.tv.SetFocus(a.chat)
+			} else {
+				a.tv.SetFocus(a.composer)
+			}
+			return nil
+		}
 	}
 	if a.tv.GetFocus() == a.composer {
 		return ev
@@ -212,9 +297,6 @@ func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'm', 'M':
 		a.toggleMute()
-		return nil
-	case 'j', 'J':
-		a.joinCursor()
 		return nil
 	case 'l', 'L':
 		a.leave()
@@ -232,42 +314,61 @@ func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
 	return ev
 }
 
-func (a *App) cycleFocus() {
-	switch a.tv.GetFocus() {
-	case a.guilds:
-		a.tv.SetFocus(a.channels)
-	case a.channels:
-		a.tv.SetFocus(a.composer)
-	default:
-		a.tv.SetFocus(a.guilds)
+func (a *App) activate(index int) {
+	switch a.level {
+	case navServers:
+		if index < 0 || index >= len(a.guilds) {
+			return
+		}
+		a.openGuild(a.guilds[index])
+	case navChannels:
+		if index < 0 || index >= len(a.rows) {
+			return
+		}
+		row := a.rows[index]
+		if row.cat || row.ch == nil {
+			return
+		}
+		switch row.ch.Kind {
+		case model.KindText:
+			a.openText(*row.ch)
+		case model.KindVoice:
+			a.join(*row.ch)
+		}
 	}
 }
 
-func (a *App) refreshGuilds() {
-	if a.gw == nil {
-		return
-	}
-	a.guilds.Clear()
-	guilds := a.gw.Guilds()
-	for _, g := range guilds {
-		g := g
-		a.guilds.AddItem(g.Name, g.ID, 0, nil)
-	}
-	if len(guilds) > 0 {
-		a.guilds.SetCurrentItem(0)
-		a.openGuild(guilds[0])
+func (a *App) back() {
+	switch a.level {
+	case navChat:
+		a.level = navChannels
+		a.channel = nil
+		a.stage.SwitchToPage("browse")
+		a.tv.SetFocus(a.nav)
+		a.setCrumb()
+		a.flash("channels")
+	case navChannels:
+		a.fillServers()
+		a.flash("servers")
 	}
 }
 
-func (a *App) openGuildIndex(index int) {
+func (a *App) fillServers() {
 	if a.gw == nil {
 		return
 	}
-	guilds := a.gw.Guilds()
-	if index < 0 || index >= len(guilds) {
-		return
+	a.level = navServers
+	a.current = nil
+	a.channel = nil
+	a.guilds = a.gw.Guilds()
+	a.nav.Clear()
+	a.nav.SetTitle(" servers ")
+	for _, g := range a.guilds {
+		a.nav.AddItem("▸  "+g.Name, "", 0, nil)
 	}
-	a.openGuild(guilds[index])
+	a.stage.SwitchToPage("browse")
+	a.tv.SetFocus(a.nav)
+	a.setCrumb()
 }
 
 func (a *App) openGuild(g model.Guild) {
@@ -276,25 +377,35 @@ func (a *App) openGuild(g model.Guild) {
 	}
 	a.current = &g
 	a.channel = nil
-	root := tview.NewTreeNode(g.Name).SetSelectable(false)
+	a.level = navChannels
+	a.rows = nil
+	a.nav.Clear()
+	a.nav.SetTitle(" channels ")
 	for _, node := range chantree.Build(a.gw.Channels(g.ID)) {
-		root.AddChild(treeNode(node))
+		a.addChannelNode(node)
 	}
-	a.channels.SetRoot(root).SetCurrentNode(root)
-	a.title.SetText(g.Name)
-	a.chat.Clear()
+	a.stage.SwitchToPage("browse")
+	a.tv.SetFocus(a.nav)
+	a.setCrumb()
+	a.flash("enter chat or voice   esc back")
 }
 
-func treeNode(n model.TreeNode) *tview.TreeNode {
-	cp := n
-	node := tview.NewTreeNode(formatters.ChannelLabel(string(n.Kind), n.Name)).
-		SetReference(&cp).
-		SetSelectable(n.Kind != model.KindCategory).
-		SetExpanded(true)
-	for _, child := range n.Children {
-		node.AddChild(treeNode(child))
+func (a *App) addChannelNode(n model.TreeNode) {
+	if n.Kind == model.KindCategory {
+		a.rows = append(a.rows, channelRow{label: n.Name, cat: true})
+		a.nav.AddItem("——  "+n.Name+"  ——", "", 0, nil)
+		for _, child := range n.Children {
+			a.addChannelNode(child)
+		}
+		return
 	}
-	return node
+	if n.Channel == nil {
+		return
+	}
+	ch := *n.Channel
+	label := formatters.ChannelLabel(string(ch.Kind), ch.Name)
+	a.rows = append(a.rows, channelRow{label: label, ch: &ch})
+	a.nav.AddItem("   "+label, "", 0, nil)
 }
 
 func (a *App) openText(ch model.Channel) {
@@ -302,8 +413,9 @@ func (a *App) openText(ch model.Channel) {
 		return
 	}
 	a.channel = &ch
+	a.level = navChat
 	a.seen = map[string]struct{}{}
-	a.title.SetText(formatters.ChannelLabel("text", ch.Name))
+	a.title.SetText("  " + formatters.ChannelLabel("text", ch.Name))
 	a.chat.Clear()
 	hist, err := a.gw.History(ch.ID, 80)
 	if err != nil {
@@ -313,7 +425,10 @@ func (a *App) openText(ch model.Channel) {
 	for _, msg := range hist {
 		a.writeIncoming(msg)
 	}
+	a.stage.SwitchToPage("chat")
 	a.tv.SetFocus(a.composer)
+	a.setCrumb()
+	a.flash("type to send   esc back")
 }
 
 func (a *App) writeIncoming(msg model.ChatMessage) {
@@ -324,7 +439,8 @@ func (a *App) writeIncoming(msg model.ChatMessage) {
 		return
 	}
 	a.seen[msg.ID] = struct{}{}
-	fmt.Fprintln(a.chat, formatters.MessageLine(msg.Author, msg.Content, msg.Timestamp))
+	fmt.Fprintf(a.chat, "[#FFD740]%s[-] [#A29BFE]%s[-]  %s\n",
+		formatters.Clock(msg.Timestamp), msg.Author, msg.Content)
 	a.chat.ScrollToEnd()
 }
 
@@ -349,16 +465,8 @@ func (a *App) join(ch model.Channel) {
 		return
 	}
 	a.voice.OnJoined(a.current.ID, ch.ID, ch.Name)
-	a.voiceBar.SetText(formatters.VoiceBar(true, false, ch.Name))
-	a.flash("joined " + ch.Name)
-}
-
-func (a *App) joinCursor() {
-	if a.cursor == nil || a.cursor.Channel == nil || a.cursor.Kind != model.KindVoice {
-		a.flash("select a voice channel")
-		return
-	}
-	a.join(*a.cursor.Channel)
+	a.paintVoice()
+	a.flash("joined " + ch.Name + "   m mute   l leave")
 }
 
 func (a *App) leave() {
@@ -370,7 +478,7 @@ func (a *App) leave() {
 		return
 	}
 	a.voice.OnLeft()
-	a.voiceBar.SetText(formatters.VoiceBar(false, false, ""))
+	a.paintVoice()
 	a.flash("left call")
 }
 
@@ -386,17 +494,60 @@ func (a *App) toggleMute() {
 			return
 		}
 	}
-	a.voiceBar.SetText(formatters.VoiceBar(true, muted, a.voice.State.ChannelName))
+	a.paintVoice()
+}
+
+func (a *App) paintVoice() {
+	st := a.voice.State
+	if st.Connected {
+		a.voiceBar.SetBackgroundColor(tcell.NewRGBColor(8, 48, 40))
+		a.voiceBar.SetTextColor(colVoice)
+	} else {
+		a.voiceBar.SetBackgroundColor(colPanel)
+		a.voiceBar.SetTextColor(colMuted)
+	}
+	a.voiceBar.SetText("  " + formatters.VoiceBar(st.Connected, st.Muted, st.ChannelName))
+}
+
+func (a *App) setCrumb() {
+	head := "[#FFE082] DIS [-]"
+	switch a.level {
+	case navServers:
+		a.crumb.SetText(head + "  [#C5CAE9]servers[-]")
+	case navChannels:
+		name := ""
+		if a.current != nil {
+			name = a.current.Name
+		}
+		a.crumb.SetText(head + "  [#C5CAE9]servers[-]  [#FFE082]›[-]  [#FFFFFF]" + name + "[-]")
+	case navChat:
+		g, c := "", ""
+		if a.current != nil {
+			g = a.current.Name
+		}
+		if a.channel != nil {
+			c = formatters.ChannelLabel("text", a.channel.Name)
+		}
+		a.crumb.SetText(head + "  [#C5CAE9]servers[-]  [#FFE082]›[-]  " + g + "  [#FFE082]›[-]  [#FFFFFF]" + c + "[-]")
+	}
 }
 
 func (a *App) reload() {
-	if a.channel != nil && a.channel.Kind == model.KindText {
-		a.openText(*a.channel)
-		a.flash("chat reloaded")
-		return
+	switch a.level {
+	case navChat:
+		if a.channel != nil {
+			a.openText(*a.channel)
+			a.flash("chat reloaded")
+		}
+	case navChannels:
+		if a.current != nil {
+			a.openGuild(*a.current)
+			a.flash("channels reloaded")
+		}
+	default:
+		a.fillServers()
+		a.flash("servers reloaded")
 	}
-	a.refreshGuilds()
-	a.flash("servers reloaded")
 }
 
 func (a *App) addServer() {
@@ -406,6 +557,11 @@ func (a *App) addServer() {
 	}
 	form := tview.NewForm()
 	form.SetBorder(true).SetTitle(" join server ")
+	form.SetBackgroundColor(colPanel)
+	form.SetBorderColor(colHot)
+	form.SetTitleColor(colHot)
+	form.SetFieldBackgroundColor(colBg)
+	form.SetButtonBackgroundColor(colAccent)
 	form.AddInputField("Invite", "", 60, nil, nil)
 	form.AddButton("Join", func() {
 		raw := form.GetFormItem(0).(*tview.InputField).GetText()
@@ -414,18 +570,17 @@ func (a *App) addServer() {
 			return
 		}
 		a.pages.RemovePage("invite")
-		a.refreshGuilds()
+		a.fillServers()
 		a.flash("joined server")
-		a.tv.SetFocus(a.guilds)
 	})
 	form.AddButton("Cancel", func() {
 		a.pages.RemovePage("invite")
-		a.tv.SetFocus(a.guilds)
+		a.tv.SetFocus(a.nav)
 	})
 	a.pages.AddPage("invite", form, true, true)
 	a.tv.SetFocus(form)
 }
 
 func (a *App) flash(msg string) {
-	a.status.SetText(msg + "    r reload  j join  l leave  m mute  a add  ctrl-c quit")
+	a.status.SetText("  " + msg + "     enter open   esc back   r reload   m mute   l leave   a add")
 }

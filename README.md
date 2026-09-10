@@ -66,14 +66,13 @@ Stores the account token in the OS keyring (macOS Keychain / Secret Service / Wi
 
 | Key | Action |
 |---|---|
-| arrows / tab | move |
-| enter | open text channel or join voice |
-| r | reload chat / servers |
-| j | join highlighted voice channel |
+| enter / → | open (server → channels → chat or join voice) |
+| esc / ← | back |
+| arrows | move |
+| r | reload this level |
 | l | leave call |
 | m | mute / unmute |
 | a | join server (paste invite) |
-| esc | back to channels |
 | ctrl-c | quit |
 
 Voice join puts your account in the channel. Mute is Discord self-mute. No local mic/speaker routing.
