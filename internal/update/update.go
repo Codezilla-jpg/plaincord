@@ -1,10 +1,10 @@
 package update
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -29,31 +30,26 @@ var (
 	ErrBadURL       = errors.New("download host not allowed")
 	ErrTooLarge     = errors.New("asset exceeds size limit")
 	ErrTooManyRedir = errors.New("too many redirects")
+	tagRe           = regexp.MustCompile(`/releases/download/(v[^/]+)/`)
 )
 
 type Client struct {
 	HTTP *http.Client
-	API  string
+	Base string
 	Repo string
-}
-
-type Release struct {
-	TagName string  `json:"tag_name"`
-	Assets  []Asset `json:"assets"`
-}
-
-type Asset struct {
-	Name   string `json:"name"`
-	URL    string `json:"browser_download_url"`
-	Digest string `json:"digest"`
 }
 
 func New() *Client {
 	c := &Client{
-		API:  "https://api.github.com",
+		Base: "https://github.com",
 		Repo: DefaultRepo,
 	}
-	c.HTTP = &http.Client{
+	c.HTTP = c.newHTTP()
+	return c
+}
+
+func (c *Client) newHTTP() *http.Client {
+	return &http.Client{
 		Timeout: 60 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
@@ -65,7 +61,6 @@ func New() *Client {
 			return nil
 		},
 	}
-	return c
 }
 
 func AssetName(goos, goarch string) string {
@@ -85,52 +80,71 @@ func NeedsUpdate(current, latest string) bool {
 	return l != "" && c != l
 }
 
-func (c *Client) Latest(current string) (Release, Asset, error) {
-	c.ensureHTTP()
-	if c.API == "" {
-		c.API = "https://api.github.com"
+func ParseTag(raw string) string {
+	m := tagRe.FindStringSubmatch(raw)
+	if len(m) == 2 {
+		return m[1]
 	}
-	if c.Repo == "" {
-		c.Repo = DefaultRepo
-	}
-	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(c.API, "/")+"/repos/"+c.Repo+"/releases/latest", nil)
-	if err != nil {
-		return Release{}, Asset{}, err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "plaincord/"+current)
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return Release{}, Asset{}, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return Release{}, Asset{}, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return Release{}, Asset{}, fmt.Errorf("github release: %s", resp.Status)
-	}
-	var rel Release
-	if err := json.Unmarshal(body, &rel); err != nil {
-		return Release{}, Asset{}, err
-	}
-	want := AssetName(runtime.GOOS, runtime.GOARCH)
-	for _, asset := range rel.Assets {
-		if asset.Name == want {
-			return rel, asset, nil
+	return ""
+}
+
+func ParseSums(body, name string) (string, error) {
+	sc := bufio.NewScanner(strings.NewReader(body))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		if fields[len(fields)-1] == name {
+			return "sha256:" + fields[0], nil
 		}
 	}
-	return rel, Asset{}, fmt.Errorf("no asset %s in %s", want, rel.TagName)
+	return "", ErrNoDigest
+}
+
+func (c *Client) fileURL(name string) string {
+	base := c.Base
+	if base == "" {
+		base = "https://github.com"
+	}
+	repo := c.Repo
+	if repo == "" {
+		repo = DefaultRepo
+	}
+	return strings.TrimRight(base, "/") + "/" + repo + "/releases/latest/download/" + name
+}
+
+func (c *Client) Latest(current string) (tag string, assetURL, digest string, err error) {
+	c.ensureHTTP()
+	name := AssetName(runtime.GOOS, runtime.GOARCH)
+	assetURL = c.fileURL(name)
+	tag, err = c.peekTag(assetURL)
+	if err != nil {
+		return "", "", "", err
+	}
+	sums, err := c.get(c.fileURL("SHA256SUMS"), 1<<20)
+	if err != nil {
+		return "", "", "", err
+	}
+	digest, err = ParseSums(string(sums), name)
+	if err != nil {
+		return "", "", "", err
+	}
+	_ = current
+	return tag, assetURL, digest, nil
 }
 
 func (c *Client) Apply(current, dest string) (string, error) {
-	rel, asset, err := c.Latest(current)
+	tag, assetURL, digest, err := c.Latest(current)
 	if err != nil {
 		return "", err
 	}
-	if !NeedsUpdate(current, rel.TagName) {
-		return rel.TagName, nil
+	if !NeedsUpdate(current, tag) {
+		return tag, nil
 	}
 	if dest == "" {
 		dest, err = os.Executable()
@@ -142,11 +156,68 @@ func (c *Client) Apply(current, dest string) (string, error) {
 			return "", err
 		}
 	}
+	asset := Asset{Name: AssetName(runtime.GOOS, runtime.GOARCH), URL: assetURL, Digest: digest}
 	if err := c.replace(asset, dest); err != nil {
 		return "", err
 	}
 	c.syncSibling(dest)
-	return rel.TagName, nil
+	return tag, nil
+}
+
+type Asset struct {
+	Name   string
+	URL    string
+	Digest string
+}
+
+func (c *Client) peekTag(rawURL string) (string, error) {
+	req, err := http.NewRequest(http.MethodHead, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "dis")
+	client := c.newHTTP()
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	if loc == "" {
+		loc = rawURL
+	} else if u, err := url.Parse(rawURL); err == nil {
+		if ref, err := u.Parse(loc); err == nil {
+			loc = ref.String()
+		}
+	}
+	if !c.allowedURLMust(loc) {
+		return "", fmt.Errorf("%w: %s", ErrBadURL, loc)
+	}
+	tag := ParseTag(loc)
+	if tag == "" {
+		return "", fmt.Errorf("could not resolve latest tag")
+	}
+	return tag, nil
+}
+
+func (c *Client) get(rawURL string, limit int64) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "dis")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download: %s", resp.Status)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, limit))
 }
 
 func (c *Client) replace(asset Asset, dest string) error {
@@ -166,7 +237,7 @@ func (c *Client) replace(asset Asset, dest string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "plaincord")
+	req.Header.Set("User-Agent", "dis")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return err
@@ -198,8 +269,7 @@ func (c *Client) replace(asset Asset, dest string) error {
 		_ = os.Remove(tmp)
 		return ErrTooLarge
 	}
-	sum := h.Sum(nil)
-	if subtle.ConstantTimeCompare(sum, want) != 1 {
+	if subtle.ConstantTimeCompare(h.Sum(nil), want) != 1 {
 		_ = os.Remove(tmp)
 		return ErrBadDigest
 	}
@@ -222,6 +292,14 @@ func parseDigest(d string) ([]byte, error) {
 	return raw, nil
 }
 
+func (c *Client) allowedURLMust(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return c.allowedURL(u)
+}
+
 func (c *Client) allowedURL(u *url.URL) bool {
 	if u == nil {
 		return false
@@ -230,7 +308,7 @@ func (c *Client) allowedURL(u *url.URL) bool {
 	if host == "" {
 		return false
 	}
-	if apiHost := c.apiHostname(); apiHost != "" && host == apiHost {
+	if baseHost := c.baseHostname(); baseHost != "" && host == baseHost {
 		if isLoopback(host) {
 			return u.Scheme == "http" || u.Scheme == "https"
 		}
@@ -240,7 +318,7 @@ func (c *Client) allowedURL(u *url.URL) bool {
 		return false
 	}
 	switch host {
-	case "github.com", "api.github.com",
+	case "github.com",
 		"objects.githubusercontent.com",
 		"release-assets.githubusercontent.com",
 		"github-releases.githubusercontent.com":
@@ -249,8 +327,8 @@ func (c *Client) allowedURL(u *url.URL) bool {
 	return strings.HasSuffix(host, ".githubusercontent.com")
 }
 
-func (c *Client) apiHostname() string {
-	u, err := url.Parse(c.API)
+func (c *Client) baseHostname() string {
+	u, err := url.Parse(c.Base)
 	if err != nil {
 		return ""
 	}
@@ -269,18 +347,7 @@ func (c *Client) ensureHTTP() {
 	if c.HTTP != nil {
 		return
 	}
-	c.HTTP = &http.Client{
-		Timeout: 60 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
-				return ErrTooManyRedir
-			}
-			if !c.allowedURL(req.URL) {
-				return fmt.Errorf("%w: %s", ErrBadURL, req.URL.Host)
-			}
-			return nil
-		},
-	}
+	c.HTTP = c.newHTTP()
 }
 
 func (c *Client) syncSibling(dest string) {

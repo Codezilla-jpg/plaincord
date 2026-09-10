@@ -6,7 +6,7 @@ set -eu
 REPO="${PLAINCORD_REPO:-Codezilla-jpg/plaincord}"
 BIN_DIR="${PLAINCORD_BIN_DIR:-${PREFIX:-$HOME/.local/bin}}"
 TMP="${TMPDIR:-/tmp}/plaincord-install-$$"
-API="https://api.github.com/repos/${REPO}/releases/latest"
+BASE="https://github.com/${REPO}/releases/latest/download"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -18,7 +18,6 @@ need() {
 need curl
 need uname
 need mkdir
-need python3
 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 arch=$(uname -m)
@@ -39,49 +38,21 @@ case "$os" in
 esac
 
 asset="dis_${os}_${arch}"
+url="${BASE}/${asset}"
+sums_url="${BASE}/SHA256SUMS"
+
 mkdir -p "$TMP" "$BIN_DIR"
 trap 'rm -rf "$TMP"' EXIT
 
-echo "Fetching release metadata"
-json=$(curl --proto '=https' --tlsv1.2 -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: plaincord-install" "$API")
-meta=$(printf '%s' "$json" | python3 -c "
-import json, sys
-want = sys.argv[1]
-rel = json.load(sys.stdin)
-for a in rel.get('assets', []):
-    if a.get('name') == want:
-        digest = a.get('digest') or ''
-        url = a.get('browser_download_url') or ''
-        print(digest)
-        print(url)
-        sys.exit(0)
-sys.exit(1)
-" "$asset") || {
-  echo "asset $asset not in latest release" >&2
-  exit 1
-}
-digest=$(printf '%s\n' "$meta" | sed -n '1p')
-url=$(printf '%s\n' "$meta" | sed -n '2p')
-case "$digest" in
-  sha256:*) ;;
-  *)
-    echo "release has no sha256 digest" >&2
-    exit 1
-    ;;
-esac
-case "$url" in
-  https://github.com/*|https://objects.githubusercontent.com/*|https://release-assets.githubusercontent.com/*|https://*.githubusercontent.com/*)
-    ;;
-  *)
-    echo "blocked download host: $url" >&2
-    exit 1
-    ;;
-esac
-
 echo "Downloading ${url}"
 curl --proto '=https' --tlsv1.2 --proto-redir '=https' -fL --retry 3 --max-filesize 41943040 -o "$TMP/dis" "$url"
+curl --proto '=https' --tlsv1.2 --proto-redir '=https' -fL --retry 3 --max-filesize 1048576 -o "$TMP/SHA256SUMS" "$sums_url"
 
-expect=${digest#sha256:}
+expect=$(awk -v name="$asset" '$NF==name {print $1; exit}' "$TMP/SHA256SUMS")
+if [ -z "$expect" ]; then
+  echo "no checksum for $asset" >&2
+  exit 1
+fi
 if command -v sha256sum >/dev/null 2>&1; then
   got=$(sha256sum "$TMP/dis" | awk '{print $1}')
 else

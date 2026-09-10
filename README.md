@@ -23,6 +23,8 @@ source ~/.zshrc
 
 Windows: download `dis_windows_amd64.exe` from [Releases](https://github.com/Codezilla-jpg/plaincord/releases/latest).
 
+Binaries: `dis_darwin_arm64` (Apple Silicon), `dis_darwin_amd64` (Intel Mac), `dis_linux_amd64`, `dis_linux_arm64`, `dis_windows_amd64.exe`.
+
 From source:
 
 ```bash
