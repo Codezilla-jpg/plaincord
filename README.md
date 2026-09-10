@@ -37,6 +37,7 @@ Stores the account token in `~/.config/plaincord/token` (0600), or use `PLAINCOR
 | `dis logout` | remove token |
 | `dis invite discord.gg/…` | join a server |
 | `dis update` | update this binary |
+| `dis uninstall` | remove binaries and saved token |
 | `dis --version` | version |
 
 ## Keys

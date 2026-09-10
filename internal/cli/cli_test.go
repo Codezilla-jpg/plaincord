@@ -12,7 +12,7 @@ func TestHelpAndVersion(t *testing.T) {
 	if code := Run([]string{"dis", "--help"}, os.Stdin, &out, &out); code != 0 {
 		t.Fatalf("help %d", code)
 	}
-	if !strings.Contains(out.String(), "account token") {
+	if !strings.Contains(out.String(), "uninstall") {
 		t.Fatalf("help %s", out.String())
 	}
 	out.Reset()

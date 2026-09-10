@@ -12,6 +12,7 @@ import (
 
 	"github.com/Codezilla-jpg/plaincord/internal/auth"
 	"github.com/Codezilla-jpg/plaincord/internal/gateway"
+	"github.com/Codezilla-jpg/plaincord/internal/install"
 	"github.com/Codezilla-jpg/plaincord/internal/model"
 	"github.com/Codezilla-jpg/plaincord/internal/ui"
 	"github.com/Codezilla-jpg/plaincord/internal/update"
@@ -83,6 +84,8 @@ func Run(args []string, stdin *os.File, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "updated %s -> %s\n", Version, update.Normalize(tag))
 		return 0
+	case "uninstall":
+		return cmdUninstall(stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command: %s\n", cmd)
 		fmt.Fprint(stderr, helpText(name))
@@ -163,6 +166,27 @@ func cmdInvite(raw string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func cmdUninstall(stdout, stderr io.Writer) int {
+	cfg, err := auth.ConfigDir()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	removed, err := install.Uninstall("", cfg)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if len(removed) == 0 {
+		fmt.Fprintln(stdout, "nothing to remove")
+		return 0
+	}
+	for _, path := range removed {
+		fmt.Fprintln(stdout, "removed "+path)
+	}
+	return 0
+}
+
 func helpText(name string) string {
 	return fmt.Sprintf(`%s — clean Discord TUI (also installed as DiscordCli)
 
@@ -173,8 +197,9 @@ Usage:
   %s logout          remove the stored token
   %s invite <url>    join a server
   %s update          replace this binary with the latest GitHub release
+  %s uninstall       remove this install and saved token
   %s --version
 
 Keys: arrows  enter  r reload  j join  l leave  m mute  a add  ctrl-c quit
-`, name, name, name, name, name, name, name, name)
+`, name, name, name, name, name, name, name, name, name)
 }
