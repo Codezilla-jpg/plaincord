@@ -1,22 +1,44 @@
 # plaincord
 
-Clean Discord TUI. Binary names: **dis** and **DiscordCli**.
+Clean Discord TUI. Commands: **dis** and **DiscordCli**.
 
-Your **personal Discord account** — servers, channel folders, text chat, voice join/leave/mute.
+Personal Discord account — servers, channel folders, text chat, voice join/leave/mute.
 
 Discord forbids unofficial user clients. Ban risk is yours.
 
 ## Install
 
+macOS (Intel + Apple Silicon) and Linux:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Codezilla-jpg/plaincord/main/install.sh | sh
 ```
 
-Puts `dis` and `DiscordCli` in `~/.local/bin`.
+Installs `dis` and `DiscordCli` to `~/.local/bin`. If `dis` is not found:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Windows: download `dis_windows_amd64.exe` from [Releases](https://github.com/Codezilla-jpg/plaincord/releases/latest).
+
+From source:
+
+```bash
+git clone https://github.com/Codezilla-jpg/plaincord.git
+cd plaincord
+go build -o dis ./cmd/dis
+```
+
+## Update / uninstall
 
 ```bash
 dis update
+dis uninstall
 ```
+
+`uninstall` removes `dis`, `DiscordCli`, leftover `dc`, and `~/.config/plaincord`.
 
 ## Login
 
@@ -25,7 +47,7 @@ dis login
 dis
 ```
 
-Stores the account token in `~/.config/plaincord/token` (0600), or use `PLAINCORD_TOKEN`.
+Token: `~/.config/plaincord/token` (0600) or `PLAINCORD_TOKEN`.
 
 ## Commands
 
@@ -37,7 +59,7 @@ Stores the account token in `~/.config/plaincord/token` (0600), or use `PLAINCOR
 | `dis logout` | remove token |
 | `dis invite discord.gg/…` | join a server |
 | `dis update` | update this binary |
-| `dis uninstall` | remove binaries and saved token |
+| `dis uninstall` | remove install + token |
 | `dis --version` | version |
 
 ## Keys
