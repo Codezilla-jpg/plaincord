@@ -20,6 +20,7 @@ type Gateway interface {
 	JoinVoice(guildID, channelID, name string) error
 	LeaveVoice() error
 	SetMute(muted bool) error
+	JoinInvite(raw string) error
 	ApplicationID() string
 }
 

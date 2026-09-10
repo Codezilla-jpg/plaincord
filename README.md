@@ -2,7 +2,9 @@
 
 Clean Discord TUI. Binary names: **dc** and **DiscordCli**.
 
-Servers, channel folders, text chat, voice join/leave/mute. Bot token only.
+Your **personal Discord account** — servers, channel folders, text chat, voice join/leave/mute.
+
+Discord forbids unofficial user clients. Ban risk is yours.
 
 ## Install
 
@@ -13,32 +15,17 @@ curl -fsSL https://raw.githubusercontent.com/Codezilla-jpg/plaincord/main/instal
 Puts `dc` and `DiscordCli` in `~/.local/bin`.
 
 ```bash
-dc update          # replace this install with the latest GitHub release
-```
-
-From source:
-
-```bash
-git clone https://github.com/Codezilla-jpg/plaincord.git
-cd plaincord
-go build -o dc ./cmd/dc
-cp dc DiscordCli
+dc update
 ```
 
 ## Login
 
-1. [Discord Developer Portal](https://discord.com/developers/applications) → New App → Bot
-2. Enable **Message Content Intent**
-3. Copy the bot token
-
 ```bash
 dc login
 dc
-# or
-DiscordCli --demo
 ```
 
-Token: `~/.config/plaincord/token` (0600) or `PLAINCORD_TOKEN`.
+Stores the account token in `~/.config/plaincord/token` (0600), or use `PLAINCORD_TOKEN`.
 
 ## Commands
 
@@ -46,9 +33,9 @@ Token: `~/.config/plaincord/token` (0600) or `PLAINCORD_TOKEN`.
 |---|---|
 | `dc` | start TUI |
 | `dc --demo` | sample data |
-| `dc login` | store token |
+| `dc login` | store account token |
 | `dc logout` | remove token |
-| `dc invite` | bot invite URL |
+| `dc invite discord.gg/…` | join a server |
 | `dc update` | update this binary |
 | `dc --version` | version |
 
@@ -62,11 +49,11 @@ Token: `~/.config/plaincord/token` (0600) or `PLAINCORD_TOKEN`.
 | j | join highlighted voice channel |
 | l | leave call |
 | m | mute / unmute |
-| a | add server (invite URL) |
+| a | join server (paste invite) |
 | esc | back to channels |
 | ctrl-c | quit |
 
-Voice join puts the bot in the channel. Mute is Discord self-mute. No local mic/speaker routing.
+Voice join puts your account in the channel. Mute is Discord self-mute. No local mic/speaker routing.
 
 ## License
 

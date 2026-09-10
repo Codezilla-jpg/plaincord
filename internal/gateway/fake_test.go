@@ -61,6 +61,12 @@ func TestFakeGatewayFlow(t *testing.T) {
 	if err := gw.LeaveVoice(); err != nil {
 		t.Fatal(err)
 	}
+	if err := gw.JoinInvite("discord.gg/abc"); err != nil {
+		t.Fatal(err)
+	}
+	if len(gw.Guilds()) != 3 {
+		t.Fatalf("guilds after invite %d", len(gw.Guilds()))
+	}
 	if err := gw.Close(); err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -135,5 +136,21 @@ func (f *Fake) SetMute(muted bool) error {
 		return fmt.Errorf("not in a call")
 	}
 	_ = muted
+	return nil
+}
+
+func (f *Fake) JoinInvite(raw string) error {
+	code := strings.TrimSpace(raw)
+	if code == "" {
+		return fmt.Errorf("invalid invite")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id := fmt.Sprintf("%d", f.nextID)
+	f.nextID++
+	f.guilds = append(f.guilds, model.Guild{ID: id, Name: "invite-" + code})
+	f.channels[id] = []model.Channel{
+		{ID: id + "c", Name: "general", Kind: model.KindText},
+	}
 	return nil
 }

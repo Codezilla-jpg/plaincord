@@ -162,7 +162,7 @@ func (a *App) mainLayout() tview.Primitive {
 func (a *App) loginForm() tview.Primitive {
 	form := tview.NewForm()
 	form.SetBorder(true).SetTitle(" DiscordCli  login ")
-	form.AddPasswordField("Bot token", "", 60, '*', nil)
+	form.AddPasswordField("Account token", "", 60, '*', nil)
 	form.AddButton("Save", func() {
 		item := form.GetFormItem(0).(*tview.InputField)
 		tok := item.GetText()
@@ -177,7 +177,7 @@ func (a *App) loginForm() tview.Primitive {
 		go a.startGateway()
 	})
 	form.AddButton("Quit", func() { a.tv.Stop() })
-	hint := tview.NewTextView().SetText("Create a bot at discord.com/developers — enable Message Content Intent.")
+	hint := tview.NewTextView().SetText("Paste your Discord account token. Unofficial clients can get accounts banned.")
 	return tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
 		AddItem(hint, 2, 0, false).
@@ -400,23 +400,30 @@ func (a *App) reload() {
 }
 
 func (a *App) addServer() {
-	id := ""
-	if a.gw != nil {
-		id = a.gw.ApplicationID()
+	if a.gw == nil {
+		a.flash("not connected")
+		return
 	}
-	if id == "" {
-		id, _ = auth.LoadApplicationID()
-	}
-	text := "Run once connected, then press a again."
-	if id != "" {
-		text = "Open this URL, pick a server, then press r:\n\n" + chantree.InviteURL(id)
-	}
-	modal := tview.NewModal().SetText(text).AddButtons([]string{"Close"}).
-		SetDoneFunc(func(_ int, _ string) {
-			a.pages.RemovePage("invite")
-			a.tv.SetFocus(a.guilds)
-		})
-	a.pages.AddPage("invite", modal, true, true)
+	form := tview.NewForm()
+	form.SetBorder(true).SetTitle(" join server ")
+	form.AddInputField("Invite", "", 60, nil, nil)
+	form.AddButton("Join", func() {
+		raw := form.GetFormItem(0).(*tview.InputField).GetText()
+		if err := a.gw.JoinInvite(raw); err != nil {
+			a.flash(err.Error())
+			return
+		}
+		a.pages.RemovePage("invite")
+		a.refreshGuilds()
+		a.flash("joined server")
+		a.tv.SetFocus(a.guilds)
+	})
+	form.AddButton("Cancel", func() {
+		a.pages.RemovePage("invite")
+		a.tv.SetFocus(a.guilds)
+	})
+	a.pages.AddPage("invite", form, true, true)
+	a.tv.SetFocus(form)
 }
 
 func (a *App) flash(msg string) {

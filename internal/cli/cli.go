@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 
 	"github.com/Codezilla-jpg/plaincord/internal/auth"
-	"github.com/Codezilla-jpg/plaincord/internal/chantree"
+	"github.com/Codezilla-jpg/plaincord/internal/gateway"
+	"github.com/Codezilla-jpg/plaincord/internal/model"
 	"github.com/Codezilla-jpg/plaincord/internal/ui"
 	"github.com/Codezilla-jpg/plaincord/internal/update"
 )
@@ -63,17 +65,11 @@ func Run(args []string, stdin *os.File, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "Token removed.")
 		return 0
 	case "invite":
-		id, err := auth.LoadApplicationID()
-		if err != nil {
-			fmt.Fprintln(stderr, err)
+		if len(filtered) < 2 {
+			fmt.Fprintln(stderr, "usage: dc invite <discord.gg/code>")
 			return 1
 		}
-		if id == "" {
-			fmt.Fprintln(stderr, "No bot id stored yet. Run dc once, then retry.")
-			return 1
-		}
-		fmt.Fprintln(stdout, chantree.InviteURL(id))
-		return 0
+		return cmdInvite(filtered[1], stdout, stderr)
 	case "update":
 		c := update.New()
 		tag, err := c.Apply(Version, "")
@@ -95,9 +91,8 @@ func Run(args []string, stdin *os.File, stdout, stderr io.Writer) int {
 }
 
 func cmdLogin(stdin *os.File, stdout, stderr io.Writer) int {
-	fmt.Fprintln(stdout, "Create a bot: https://discord.com/developers/applications")
-	fmt.Fprintln(stdout, "Enable Privileged Gateway Intent: Message Content.")
-	fmt.Fprint(stdout, "Bot token: ")
+	fmt.Fprintln(stdout, "Paste your Discord account token (input hidden).")
+	fmt.Fprint(stdout, "Token: ")
 	var token string
 	if stdin != nil && term.IsTerminal(int(stdin.Fd())) {
 		pw, err := term.ReadPassword(int(stdin.Fd()))
@@ -123,15 +118,60 @@ func cmdLogin(stdin *os.File, stdout, stderr io.Writer) int {
 	return 0
 }
 
+type readyN struct {
+	done chan struct{}
+}
+
+func (r *readyN) OnReady() {
+	select {
+	case <-r.done:
+	default:
+		close(r.done)
+	}
+}
+func (r *readyN) OnMessage(model.ChatMessage) {}
+func (r *readyN) OnError(string)              {}
+
+func cmdInvite(raw string, stdout, stderr io.Writer) int {
+	token, err := auth.LoadToken()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if token == "" {
+		fmt.Fprintln(stderr, "Not logged in. Run: dc login")
+		return 1
+	}
+	wait := &readyN{done: make(chan struct{})}
+	gw := gateway.NewDiscord(token, wait)
+	if err := gw.Start(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer gw.Close()
+	select {
+	case <-wait.done:
+	case <-time.After(20 * time.Second):
+		fmt.Fprintln(stderr, "timeout waiting for Discord")
+		return 1
+	}
+	if err := gw.JoinInvite(raw); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	fmt.Fprintln(stdout, "joined")
+	return 0
+}
+
 func helpText(name string) string {
 	return fmt.Sprintf(`%s — clean Discord TUI (also installed as DiscordCli)
 
 Usage:
   %s                 start the client
   %s --demo          sample data, no token
-  %s login           store a bot token
+  %s login           store your account token
   %s logout          remove the stored token
-  %s invite          print the bot invite URL
+  %s invite <url>    join a server
   %s update          replace this binary with the latest GitHub release
   %s --version
 

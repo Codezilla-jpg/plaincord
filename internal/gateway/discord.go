@@ -3,12 +3,14 @@ package gateway
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
 
 	"github.com/Codezilla-jpg/plaincord/internal/auth"
+	"github.com/Codezilla-jpg/plaincord/internal/invite"
 	"github.com/Codezilla-jpg/plaincord/internal/model"
 )
 
@@ -35,19 +37,15 @@ func (d *Discord) ApplicationID() string {
 }
 
 func (d *Discord) Start() error {
-	s, err := discordgo.New("Bot " + d.Token)
+	token := strings.TrimPrefix(strings.TrimSpace(d.Token), "Bot ")
+	s, err := discordgo.New(token)
 	if err != nil {
 		return err
 	}
-	s.Identify.Intents = discordgo.IntentsGuilds |
-		discordgo.IntentsGuildMessages |
-		discordgo.IntentsGuildVoiceStates |
-		discordgo.IntentMessageContent
+	s.Identify.Intents = discordgo.IntentsAll
 	s.AddHandler(func(_ *discordgo.Session, r *discordgo.Ready) {
 		id := ""
-		if r.Application != nil && r.Application.ID != "" {
-			id = r.Application.ID
-		} else if r.User != nil {
+		if r.User != nil {
 			id = r.User.ID
 		}
 		d.mu.Lock()
@@ -217,6 +215,19 @@ func (d *Discord) SetMute(muted bool) error {
 		return fmt.Errorf("not in a call")
 	}
 	return vc.ChangeChannel(vc.ChannelID, muted, false)
+}
+
+func (d *Discord) JoinInvite(raw string) error {
+	code, err := invite.Parse(raw)
+	if err != nil {
+		return err
+	}
+	s := d.sess()
+	if s == nil {
+		return fmt.Errorf("not connected")
+	}
+	_, err = s.InviteAccept(code)
+	return err
 }
 
 func kindOf(t discordgo.ChannelType) (model.Kind, bool) {

@@ -12,7 +12,7 @@ func TestHelpAndVersion(t *testing.T) {
 	if code := Run([]string{"dc", "--help"}, os.Stdin, &out, &out); code != 0 {
 		t.Fatalf("help %d", code)
 	}
-	if !strings.Contains(out.String(), "update") {
+	if !strings.Contains(out.String(), "account token") {
 		t.Fatalf("help %s", out.String())
 	}
 	out.Reset()
@@ -24,13 +24,25 @@ func TestHelpAndVersion(t *testing.T) {
 	}
 }
 
-func TestInviteWithoutID(t *testing.T) {
+func TestInviteRequiresCode(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var errBuf bytes.Buffer
 	if code := Run([]string{"dc", "invite"}, os.Stdin, os.Stdout, &errBuf); code != 1 {
 		t.Fatalf("code %d", code)
 	}
-	if !strings.Contains(errBuf.String(), "No bot id") {
+	if !strings.Contains(errBuf.String(), "usage:") {
+		t.Fatalf("%s", errBuf.String())
+	}
+}
+
+func TestInviteNotLoggedIn(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("PLAINCORD_TOKEN", "")
+	var errBuf bytes.Buffer
+	if code := Run([]string{"dc", "invite", "abc"}, os.Stdin, os.Stdout, &errBuf); code != 1 {
+		t.Fatalf("code %d %s", code, errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "Not logged in") {
 		t.Fatalf("%s", errBuf.String())
 	}
 }
